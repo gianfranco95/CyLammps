@@ -1,0 +1,16 @@
+cose da vedere:
+1) encode categorical attributes with an EMBEDDING, that is an example of REPRESENTATION LEARNING.
+2) hyperparameter aiuta a scoprire facilemente se un certa feature migliora l'apprendimento o meno
+3) ensemble learning
+4) libreria joblib
+5) out-of-core training per dataset enormi, vedere "Stochastic Gradient Descent"
+
+
+
+CHAPTER 4:
+1) SGD utile per uscire da minimi locali quando la loss non e' convessa.
+2) BATCH/Mini-BATCH GD non e' implementato in SKLEARN.  E' implementato solo SGD via SGDRegressor/SGDClassifier 
+3) GD sono ottimizzatori per allenare il modello ML.
+4) Learning curves->   VALIDATION ERROR versus TRAINING ERROR
+5) EARLY STOPPING regolarizzazione per algoritmi di gradient descent
+6) Rivedere Logistic Regression

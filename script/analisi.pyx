@@ -398,7 +398,6 @@ def PROFILO(Py_ssize_t t, Py_ssize_t Dg=2):
 @cython.boundscheck(False)
 def MAPPA_H(Py_ssize_t t, Py_ssize_t Nx):
 	#usare come Nx un valore doppio di  Lx, quella nominale 200,300,700 non quella proprio esatta
-
 	cdef double[:,:] X, PROFILO
 	cdef double[:] box, H
 	cdef Py_ssize_t i, j, N, Ny, Nz
@@ -429,6 +428,48 @@ def MAPPA_H(Py_ssize_t t, Py_ssize_t Nx):
 
 	return t, H.base
 
+
+
+#*********************************************************************************************************************************************************************************************
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#*********************************************************************************************************************************************************************************************
+#MAPPA DI DeltaH(x,eps)  AL VARIARE DELLA COMPRESSIONE #####################################################################################################################################################################################
+@cython.cdivision(True)
+@cython.boundscheck(False)
+def MAPPA_DH(Py_ssize_t t,Py_ssize_t t2, Py_ssize_t Nx):
+	#usare come Nx un valore doppio di  Lx, quella nominale 200,300,700 non quella proprio esatta
+	cdef double[:,:] X, X2, DHxy
+	cdef double[:] box, box2, DH
+	cdef Py_ssize_t i, j, N, Ny, Nz
+	cdef Py_ssize_t Dg = 2
+	cdef double Lx
+	file = f'../lmp_data/Conf_{t:d}.bin'
+	file2 = f'../lmp_data/Conf_{t2:d}.bin'
+
+	N,X2,box2 = initialize_bin(file2)
+
+	N,X,box = initialize_bin(file)
+	Lx = 2*box[1]
+
+	Ny = <int>( FLOOR(box[3]*2*Dg))
+	Nz = <int>( FLOOR((box[5]-box[4])*Dg))
+
+	DHxy = np.zeros( (Nx,Ny) )
+	DH = np.zeros(Nx)
+
+	tree2D = KDTree(X.base[:,:2],boxsize=[2*box[1],2*box[3]])
+	tree2Dgrid = KDTree( np.array( np.meshgrid( np.arange(Nx)*Lx/Nx , np.arange(Ny)/Dg ,indexing='ij') ).reshape(2,-1).T  , boxsize=[2*box[1],2*box[3]])
+	lista = tree2Dgrid.query_ball_tree( tree2D, 2 )
+	
+	for i in range(Nx):
+		for j in range(Ny):
+			ids = np.argsort( X.base[lista[i*Ny +j],2], kind='mergesort')[-3:]
+			DHxy[i,j] = (X2.base[lista[i*Ny +j],2][ids] - X.base[lista[i*Ny +j],2][ids]).mean()
+
+	for i in range(Nx):
+		for j in range(Ny):
+			DH[i] = DH[i] + DHxy[i,j]/Ny
+	return t2, DH.base
 
 #*********************************************************************************************************************************************************************************************
 #-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
