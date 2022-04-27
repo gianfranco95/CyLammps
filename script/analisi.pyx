@@ -1,11 +1,59 @@
 cimport cython
 import numpy as np
 from scipy.spatial import KDTree
-
 from libc.math cimport floor as FLOOR
 from libc.math cimport abs as ABS
 from libc.math cimport sqrt as SQRT
 from libc.math cimport round as ROUND
+
+
+#************************************************************************************************************************************$
+#------------------------------------------------------------------------------------------------------------------------------------$
+#************************************************************************************************************************************$
+#CALCOLO DEL PRODOTTO SCALARE DELLO STRESS CON SENI E COSENI
+@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def average_theta(double[:,:] R, double[:,:] Stress, double[:,:] C2t, double[:,:] C4t, double[:,:] S2t, double[:,:] S4t, Py_ssize_t p):
+	cdef Py_ssize_t i,j,rr,Mx,Nx
+	cdef double[:] X2,X4,Y2,Y4, count
+	cdef double rc = 4                      #in unita' della griglia cioe' 4d = 4*0.5 = 2 diametri
+	Nx = Stress.shape[0]
+	Mx = <int>(Nx/2)
+
+	X2 = np.zeros(Mx)
+	X4 = np.zeros(Mx)
+	Y2 = np.zeros(Mx)
+	Y4 = np.zeros(Mx)
+	
+	count = np.zeros(Mx)
+
+	for i in range(Nx):
+		for j in range(Nx):
+			rr = <int>( FLOOR(R[i,j]) )
+			if rr < Mx:
+				count[rr] += 1
+				X2[rr] +=  Stress[j,i] * C2t[i,j]
+				X4[rr] +=  Stress[j,i] * C4t[i,j]
+				Y2[rr] +=  Stress[j,i] * S2t[i,j]
+				Y4[rr] +=  Stress[j,i] * S4t[i,j]
+
+	for i in range(Mx):
+		if (count[i] != 0):
+			X2[i] = X2[i]/count[i]
+			X4[i] = X4[i]/count[i]
+			Y2[i] = Y2[i]/count[i]
+			Y4[i] = Y4[i]/count[i]
+		
+		X2[i] = X2[i]*(i/rc)**p
+		X4[i] = X4[i]*(i/rc)**p
+		Y2[i] = Y2[i]*(i/rc)**p
+		Y4[i] = Y4[i]*(i/rc)**p
+
+
+
+	return X2.base, X4.base, Y2.base, Y4.base
+
 
 #*********************************************************************************************************************************************************************************************
 #-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -15,15 +63,29 @@ from libc.math cimport round as ROUND
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def CORR_STRESS(Py_ssize_t t,double Dg=2):
+def CORR_STRESS(Py_ssize_t t):
 	cdef Py_ssize_t i, j, k, n, m, II, JJ, Nx, Ny, Nz, Mx, My						#dimensioni della griglia su cui e' calcolato lo stress 2d(integrato su z)
-	cdef double dz = 1/Dg
-										#step della griglia 3d su cui e' calcolato lo stress coarse-grained
-#	cdef double[:,:,:,:] stress3d1 = np.load(f'stress/stress_{t-1:d}.npy')
-#	cdef double[:,:,:,:] stress3d2 = np.load(f'stress/stress_{t:d}.npy')
-#	cdef double[:,:,:,:] stress3d = stress3d2.base - stress3d1.base
+	cdef double dz = 0.5										#step della griglia 3d su cui e' calcolato lo stress coarse-grained
+	cdef Py_ssize_t Dg =2
 
-	cdef double[:,:,:,:] stress3d = np.load(f'stress/stress_{t:d}.npy')
+	#stress differenziale________________________________________________________________
+	P0 = 0*np.load(f'stress/stress_{t-1:d}.npy')
+	P2 = np.load(f'stress/stress_{t:d}.npy')
+
+	if (P0.shape[2] < P2.shape[2]) :
+		P1 = np.zeros(P2.shape)
+		P1[:,:,:P0.shape[2],:] = P0[:,:,:,:]
+		del P0
+	else :
+		P1 = P0
+		del P0
+
+	cdef double[:,:,:,:] stress3d = P2 - P1
+	del P1,P2
+
+	#stress attuale________________________________________________________________________
+#	cdef double[:,:,:,:] stress3d = np.load(f'stress/stress_{t:d}.npy')
+	#___________________________________________________________________________________________________________
 
 	cdef double[:] stress_medio							#stress 3 componenti mediato sulla griglia 2d
 	cdef double[:,:,:] stress
@@ -32,10 +94,12 @@ def CORR_STRESS(Py_ssize_t t,double Dg=2):
 	Ny = stress3d.shape[1]
 	Nz = stress3d.shape[2]
 
-	Mx = <int>( FLOOR( min(Nx/2,Ny/2)*np.cos(np.pi/4) )  )			#sono sicuro di non sommare contributi di immagine periodica
+	#Mx = <int>( FLOOR( min(Nx/2,Ny/2)*np.cos(np.pi/4) )  )			#sono sicuro di non sommare contributi di immagine periodica
+	Mx = <int>( FLOOR( min(Nx/2,Ny/2) )  )			#sono sicuro di non sommare contributi di immagine periodica
 	My = Mx
 
-	stress = np.zeros((Nx,Ny,3))						#stress2d componenti sferiche s1,s2,s3
+	#integro lo stress lungo z __________________
+	stress = np.zeros((Nx,Ny,3))						#stress2d componenti sferiche s1,s2,s3 calcolata sulla base cartesiana
 	stress_medio = np.zeros(3)
 
 	for i in range(Nx):
@@ -48,12 +112,10 @@ def CORR_STRESS(Py_ssize_t t,double Dg=2):
 			stress_medio[0] = stress_medio[0] + stress[i,j,0]/(Nx*Ny)
 			stress_medio[1] = stress_medio[1] + stress[i,j,1]/(Nx*Ny)
 			stress_medio[2] = stress_medio[2] + stress[i,j,2]/(Nx*Ny)
-
 	del stress3d
-#	del stress3d1
-#	del stress3d2
+	#_______________________________________________
 
-	cdef double[:,:,:] C = np.zeros((2*Mx,2*My,9))			#matrice di autocorrelazione dello stress 2d Nx/2*Ny/2*9
+	cdef double[:,:,:] C = np.zeros((2*Mx,2*My,9))			#matrice di autocorrelazione dello stress 2d
 
 	for n in range(-Mx,Mx):
 		for m in range(-My,My):
@@ -83,7 +145,6 @@ def CORR_STRESS(Py_ssize_t t,double Dg=2):
 					C[n+Mx,m+My,7] = C[n+Mx,m+My,7] + stress[i,j,2]*stress[II,JJ,1]/(Nx*Ny)
 					C[n+Mx,m+My,8] = C[n+Mx,m+My,8] + stress[i,j,2]*stress[II,JJ,2]/(Nx*Ny)
 
-
 			C[n+Mx,m+My,0] = C[n+Mx,m+My,0] - stress_medio[0]*stress_medio[0]
 			C[n+Mx,m+My,1] = C[n+Mx,m+My,1] - stress_medio[0]*stress_medio[1]
 			C[n+Mx,m+My,2] = C[n+Mx,m+My,2] - stress_medio[0]*stress_medio[2]
@@ -94,6 +155,7 @@ def CORR_STRESS(Py_ssize_t t,double Dg=2):
 			C[n+Mx,m+My,7] = C[n+Mx,m+My,7] - stress_medio[2]*stress_medio[1]
 			C[n+Mx,m+My,8] = C[n+Mx,m+My,8] - stress_medio[2]*stress_medio[2]
 
+#	np.save(f'Correlation_stress/diff_corr_{t:d}.npy' , C.base, allow_pickle=False,fix_imports=False)
 	np.save(f'Correlation_stress/corr_{t:d}.npy' , C.base, allow_pickle=False,fix_imports=False)
 	return
 
@@ -375,17 +437,17 @@ def PROFILO(Py_ssize_t t, Py_ssize_t Dg=2):
 
 	#CALCOLO DELLA DENSITA' #########################
 	#in realta' calcolo il numero di pallette dentro una bolla di raggio 4, non divido per il volume della bolla, questo e' fatto a posteriori
-	tree = KDTree(X,boxsize=[2*box[1],2*box[3],np.Inf] )
-	cdef Py_ssize_t[:,:,:] DENSITY = np.zeros((Nx,Ny,Nz)).astype(np.int_)
+#	tree = KDTree(X,boxsize=[2*box[1],2*box[3],np.Inf] )
+#	cdef Py_ssize_t[:,:,:] DENSITY = np.zeros((Nx,Ny,Nz)).astype(np.int_)
 
-	for i in range(Nx):
-		for j in range(Ny):
-			for k in range(Nz):
-				if (<double>k/<double>Dg < PROFILO[i,j]) :
-					DENSITY[i,j,k] = DENSITY[i,j,k] + <int>(tree.count_neighbors(   KDTree(np.array([<double>i/<double>Dg, <double>j/<double>Dg, <double>k/<double>Dg]).reshape(1,3), boxsize=[2*box[1],2*box[3],np.Inf] ), 4 ))
+#	for i in range(Nx):
+#		for j in range(Ny):
+#			for k in range(Nz):
+#				if (<double>k/<double>Dg < PROFILO[i,j]) :
+#					DENSITY[i,j,k] = DENSITY[i,j,k] + <int>(tree.count_neighbors(   KDTree(np.array([<double>i/<double>Dg, <double>j/<double>Dg, <double>k/<double>Dg]).reshape(1,3), boxsize=[2*box[1],2*box[3],np.Inf] ), 4 ))
 
 	np.save(f'profilo/profilo_{t:d}.npy' , PROFILO.base, allow_pickle=False,fix_imports=False)
-	np.save(f'density/density_{t:d}.npy' , DENSITY.base, allow_pickle=False,fix_imports=False)
+#	np.save(f'density/density_{t:d}.npy' , DENSITY.base, allow_pickle=False,fix_imports=False)
 
 	return 
 
@@ -542,3 +604,11 @@ def initialize_bin(file):
 		X[i,2] =  X[i,2] - box[4]
 
 	return N, X.base, box.base
+
+
+
+
+#*********************************************************************************************************************************************************************************************
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#***********************************************************************************************************************************************************************************************
+
