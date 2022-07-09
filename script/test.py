@@ -1,4 +1,10 @@
-#template per eseguire varie analisi
+from timeit import default_timer as timer
+from multiprocessing import Pool
+import glob
+import re
+
+import numpy as np
+
 from ANALISI import CGSTRESS
 from ANALISI import PROFILO
 from ANALISI import CORR_STRESS
@@ -6,15 +12,17 @@ from ANALISI import MAPPA_H
 from ANALISI import MAPPA_DH
 from ANALISI import VOLUME
 
-from timeit import default_timer as timer
-from multiprocessing import Pool
-import numpy as np
-import glob
 
+def last_stress(path):
+	count=[]
+	for f in path:
+		count.append( int(re.findall(r'\d+', f)[-1]) )
+	count = np.array(count)
+	return count.max()
 
 def func(curva):
     curva[:,0] = (curva[0,0]-curva[:,0])/curva[0,0]
-    Idrop = np.arange(curva.shape[0]-1)[curva[1:,7] - curva[:-1,7] < - 1e-5  ] +1
+    Idrop = np.arange(curva.shape[0]-1)[curva[1:,7] - curva[:-1,7] < - 1e-8  ] +1
     edrop = curva[Idrop,0]
     drops = np.abs(curva[Idrop,7] - curva[Idrop-1,7])
     return edrop, Idrop
@@ -23,16 +31,16 @@ def func(curva):
 #Np numero di processori da usare per run in parallelo
 def do_profilo(Idrop,Np):
 	#calcola sia Hxy che densita'
-	val = np.array([ [i-1,i] for i in Idrop]).ravel().astype(np.int_)
+#	val = np.array([ [i-1,i] for i in Idrop]).ravel().astype(np.int_)
 	with Pool(Np) as pool:
-		res = pool.map(PROFILO,val)
+		res = pool.map(PROFILO,Idrop)
 	return
 
 def do_CGstress(Idrop,Np):
 	#calcola solo stress CG su griglia 3d
-	val = np.array([ [i-1,i] for i in Idrop]).ravel().astype(np.int_)
+#	val = np.array([ [i-1,i] for i in Idrop]).ravel().astype(np.int_)
 	with Pool(Np) as pool:
-		pool.map(CGSTRESS,val)
+		pool.map(CGSTRESS,Idrop)
 	return
 
 def do_corrStress(val,Np):
@@ -114,20 +122,24 @@ def main():
 	data = np.loadtxt('../curva_carico.dat')
 	edrop,Idrop = func(data)
 
-	bol = Idrop > 13600
-	Idrop = Idrop[bol]
-	print(Idrop.shape)
+	Nlast = last_stress( glob.glob('stress/stress_*.npy') )
 
+	bol = edrop < 0.15
+#	bol = Idrop > Nlast
+	Idrop = Idrop[bol]
+#	print(Idrop.shape)
 
 	start = timer()
 
-	Np = min(Idrop.shape[0],90)
-	do_DHx_eps(data[:,0],2*200,Np,edrop[-1])
-	do_volume(20)
+	val = np.arange(Idrop[-1])
+	print(val.shape)
+#	do_DHx_eps(data[:,0],2*500,90,edrop[-1])
+#	do_volume(20)
 
-	do_profilo(Idrop,Np)
-	do_CGstress(Idrop,Np)
-	#do_corrStress(Idrop,Np)
+	Np = min(val.shape[0],85)
+	do_profilo(val,Np)
+	do_CGstress(val,Np)
+	#do_corrStress(Idrop,90)
 
 	end = timer()
 	print(f'tempo {end-start}')
