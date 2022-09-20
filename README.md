@@ -9,9 +9,6 @@ and the [stress spatial autocorrelation functions](https://journals.aps.org/prl/
 
 I used [Cython](https://cython.readthedocs.io/en/latest/index.html) as a programming language in order to translate the code into an optimized C code and to compile it as a Python extension module. This allows me to obtain very fast program execution and to preserve the advantages of Python.
 
-# Dependencies 
-
-
 # Compile the code
 To compile the extension in the current directory do:
 
