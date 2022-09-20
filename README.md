@@ -1,4 +1,6 @@
 # Introduction
+![Library](Cylammps_icon.png)
+
 CyLammps is a python library used to analyze molecular dynamics simulations. 
 Simulations are produced by [LAMMPS](https://docs.lammps.org/Manual.html).
 All the quantity calculated are really important to study the mechanical properties of amorphous materials.
@@ -28,3 +30,4 @@ This code was used quite a lot by me in the following papers:
 2. [Neural Networks Reveal the Impact of the Vibrational Dynamics in the Prediction of the Long-Time Mobility of Molecular Glassformers](https://www.mdpi.com/1422-0067/23/16/9322)
 
 3. [Nanoscale Elastoplastic Wrinkling of Ultrathin Molecular Films](https://www.mdpi.com/1422-0067/22/21/11732)
+
