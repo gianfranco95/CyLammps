@@ -37,23 +37,15 @@ def initialize_bin(file):
 
 
 
-#*********************************************************************************************************************************************************************************************
-#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#***********************************************************************************************************************************************************************************************
-
-
-
-
-
-#CALCOLO DEL PRODOTTO SCALARE DELLO STRESS CON SENI E COSENI
-#@cython.boundscheck(False)
-
+@cython.boundscheck(False)
 @cython.cdivision(True)
 @cython.wraparound(False)
 def average_theta(double[:,:] R, double[:,:] Stress, double[:,:] C2t, double[:,:] C4t, double[:,:] S2t, double[:,:] S4t, Py_ssize_t p):
+	""" compute the first harmonics of the coarse-grained stress"""
+
 	cdef Py_ssize_t i,j,rr,M,N, Mx,My
 	cdef double[:] X2,X4,Y2,Y4, count
-	cdef double rc = 4                      #in unita' della griglia cioe' 4d = 4*0.5 = 2 diametri
+	cdef double rc = 4
 
 	Mx = <int>(Stress.shape[0]/2)
 	My = <int>(Stress.shape[1]/2)
@@ -98,20 +90,18 @@ def average_theta(double[:,:] R, double[:,:] Stress, double[:,:] C2t, double[:,:
 	return X2.base, X4.base, Y2.base, Y4.base
 
 
-#*********************************************************************************************************************************************************************************************
-#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#*********************************************************************************************************************************************************************************************
-#CALCOLO DELLA MATRICE DI AUTOCORRELAZIONE DELLO STRESS
 
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
 def CORR_STRESS(Py_ssize_t t):
-	cdef Py_ssize_t i, j, k, n, m, II, JJ, Nx, Ny, Nz, Mx, My						#dimensioni della griglia su cui e' calcolato lo stress 2d(integrato su z)
-	cdef double dz = 0.5										#step della griglia 3d su cui e' calcolato lo stress coarse-grained
+	"""compute the stress autocorrelation matrix """
+
+	cdef Py_ssize_t i, j, k, n, m, II, JJ, Nx, Ny, Nz, Mx, My						
+	cdef double dz = 0.5		
 	cdef Py_ssize_t Dg =2
 
-	#stress differenziale________________________________________________________________
+	#differential stress
 	P0 = 0*np.load(f'stress/stress_{t-1:d}.npy')
 	P2 = np.load(f'stress/stress_{t:d}.npy')
 
@@ -126,23 +116,19 @@ def CORR_STRESS(Py_ssize_t t):
 	cdef double[:,:,:,:] stress3d = P2 - P1
 	del P1,P2
 
-	#stress attuale________________________________________________________________________
-#	cdef double[:,:,:,:] stress3d = np.load(f'stress/stress_{t:d}.npy')
-	#___________________________________________________________________________________________________________
 
-	cdef double[:] stress_medio							#stress 3 componenti mediato sulla griglia 2d
+	cdef double[:] stress_medio							
 	cdef double[:,:,:] stress
 
 	Nx = stress3d.shape[0]
 	Ny = stress3d.shape[1]
 	Nz = stress3d.shape[2]
 
-	#Mx = <int>( FLOOR( min(Nx/2,Ny/2)*np.cos(np.pi/4) )  )			#sono sicuro di non sommare contributi di immagine periodica
-	Mx = <int>( FLOOR( min(Nx/2,Ny/2) )  )			#sono sicuro di non sommare contributi di immagine periodica
+	Mx = <int>( FLOOR( min(Nx/2,Ny/2) )  )			
 	My = Mx
 
-	#integro lo stress lungo z __________________
-	stress = np.zeros((Nx,Ny,3))						#stress2d componenti sferiche s1,s2,s3 calcolata sulla base cartesiana
+	#integrate the stress along z 
+	stress = np.zeros((Nx,Ny,3))
 	stress_medio = np.zeros(3)
 
 	for i in range(Nx):
@@ -158,7 +144,7 @@ def CORR_STRESS(Py_ssize_t t):
 	del stress3d
 	#_______________________________________________
 
-	cdef double[:,:,:] C = np.zeros((2*Mx,2*My,9))			#matrice di autocorrelazione dello stress 2d
+	cdef double[:,:,:] C = np.zeros((2*Mx,2*My,9))
 
 	for n in range(-Mx,Mx):
 		for m in range(-My,My):
@@ -198,27 +184,21 @@ def CORR_STRESS(Py_ssize_t t):
 			C[n+Mx,m+My,7] = C[n+Mx,m+My,7] - stress_medio[2]*stress_medio[1]
 			C[n+Mx,m+My,8] = C[n+Mx,m+My,8] - stress_medio[2]*stress_medio[2]
 
-#	np.save(f'Correlation_stress/diff_corr_{t:d}.npy' , C.base, allow_pickle=False,fix_imports=False)
 	np.save(f'Correlation_stress/corr_{t:d}.npy' , C.base, allow_pickle=False,fix_imports=False)
 	return
 
 
-#*********************************************************************************************************************************************************************************************
-#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#*********************************************************************************************************************************************************************************************
-#CALCOLO DELLO STRESS TOTALE E DELL'ENERGIA POTENZIALE TOTALE
 @cython.cdivision(True)
 @cython.boundscheck(False)
 def LOG_THERMO(Py_ssize_t  t):
-	#PARAMETRI ####################################################################
+	"""compute thermodynamics of the total system"""
 	cdef double epsilon = 1
 	cdef double sigma = 1
 	cdef double Km=1111
 	cdef double l0 = 0.9
 	cdef Py_ssize_t Rc=2
 	cdef double rcut=2.5
-	###############################################################################
-	#LETTURA CONFIGURAZIONE AL 'TEMPO' t
+
 	file = f'../lmp_data/Conf_{t:d}.bin'
 	cdef double[:,:] X
 	cdef double[:] box
@@ -227,8 +207,7 @@ def LOG_THERMO(Py_ssize_t  t):
 
 	N,X,box = initialize_bin(file)
 	Lx = box[1] - box[0]
-	#########################################################################################
-	#CALCOLO DEL VOLUME
+
 	cdef Py_ssize_t i, j, k,  Nx, Ny, Nz, p, Np
 	cdef double Dg = 2
 	cdef double VOLUME =0
@@ -249,8 +228,6 @@ def LOG_THERMO(Py_ssize_t  t):
 	del tree2Dgrid
 	del lista
 
-	###################################################################################################
-	#CALCOLO DELLO STRESS TOTALE  e ENERGIA POTENZIALE
 	cdef double RIJx,RIJy,RIJz,FIJx,FIJy,FIJz
 
 	cdef Py_ssize_t[:,:] pairs
@@ -264,7 +241,6 @@ def LOG_THERMO(Py_ssize_t  t):
 	THERMO[8] = VOLUME
 	
 	for p in range(Np):
-		#vettore  della coppia
 		RIJx = -X[pairs[p,0],0] + X[pairs[p,1],0]
 		RIJy = -X[pairs[p,0],1] + X[pairs[p,1],1]
 		RIJz = -X[pairs[p,0],2] + X[pairs[p,1],2]
@@ -272,7 +248,6 @@ def LOG_THERMO(Py_ssize_t  t):
 		RIJy =  RIJy - 2*box[3]*ROUND(RIJy/(2.0*box[3]))
 		R = SQRT( RIJx**2 +  RIJy**2 + RIJz**2 )
 
-                #calcolo forze per catene di trimeri
 		if (  ( <int>(ABS(FLOOR(<double>pairs[p,0] /3.0) - FLOOR(<double>pairs[p,1] /3.0) )) == 0 )  &  ( <int>(ABS(pairs[p,0] - pairs[p,1]) ) == 1 )  ):
 			FIJx =  Km*(R - l0)*RIJx/R
 			FIJy =  Km*(R - l0)*RIJy/R
@@ -292,7 +267,6 @@ def LOG_THERMO(Py_ssize_t  t):
 		THERMO[6] +=   (FIJy * RIJz)/(VOLUME)
 
 
-	#forza del muro diretta lungo z
 	cdef double Fw
 
 	for n in range(N):
@@ -303,23 +277,19 @@ def LOG_THERMO(Py_ssize_t  t):
 
 	return THERMO.base
 
-#*********************************************************************************************************************************************************************************************
-#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#*********************************************************************************************************************************************************************************************
-# FUNZIONE PER IL CALCOLO DELLO STRESS
 
 @cython.cdivision(True)
 @cython.boundscheck(False)
 def CGSTRESS(Py_ssize_t  t , Py_ssize_t Dg = 2):
-	#PARAMETRI ####################################################################
+	"""compute the coarse grained stress"""
+
 	cdef double epsilon = 1
 	cdef double sigma = 1
 	cdef double Km=1111
 	cdef double l0 = 0.9
 	cdef Py_ssize_t Rc=2
 	cdef double rcut=2.5
-	###############################################################################
-	#LETTURA CONFIGURAZIONE AL 'TEMPO' t
+
 	file = f'../lmp_data/Conf_{t:d}.bin'
 	cdef double[:,:] X
 	cdef double[:] box
@@ -327,8 +297,6 @@ def CGSTRESS(Py_ssize_t  t , Py_ssize_t Dg = 2):
 
 	N,X,box = initialize_bin(file)
 
-	######################################################################################################################################
-	#CREAZIONE GRIGLIA
 	cdef Py_ssize_t i, j, k, Np, p, Nx, Ny, Nz
 
 	Nx = <int>( FLOOR(box[1]*2*Dg))
@@ -336,8 +304,6 @@ def CGSTRESS(Py_ssize_t  t , Py_ssize_t Dg = 2):
 	Nz = <int>( FLOOR((box[5]-box[4])*Dg))
 
 
-	#CALCOLO DELLA TOPOGRAFIA ##############################################################################################################
-	#uso bin circolare raggio 2
 	cdef double[:,:] PROFILO = np.zeros( (Nx,Ny) )
 
 	tree2D = KDTree(X.base[:,:2],boxsize=[2*box[1],2*box[3]])
@@ -352,7 +318,6 @@ def CGSTRESS(Py_ssize_t  t , Py_ssize_t Dg = 2):
 	del tree2Dgrid
 	del lista
 	
-	#CALCOLCO DELLO STRESS COARSE-GRAINED ##################################################################################################
 	cdef double RIJx,RIJy,RIJz,FIJx,FIJy,FIJz,rrix,rriy,rriz,rrjx,rrjy,rrjz,R,u2,uv,v2,w2,H,xj,xi,a,b, phi_int
 	cdef double pi = np.pi
 
@@ -364,9 +329,7 @@ def CGSTRESS(Py_ssize_t  t , Py_ssize_t Dg = 2):
 	cdef double[:,:,:,:] PRESS = np.zeros( (  Nx, Ny, Nz, 6 )  )
 	cdef Py_ssize_t xc, yc, zc, Dx, Dy, Dz, II, JJ, KK
 
-	#termine di interazione a coppia
 	for p in range(Np):
-		#vettore  della coppia
 		RIJx = -X[pairs[p,0],0] + X[pairs[p,1],0]
 		RIJy = -X[pairs[p,0],1] + X[pairs[p,1],1]
 		RIJz = -X[pairs[p,0],2] + X[pairs[p,1],2]
@@ -374,7 +337,6 @@ def CGSTRESS(Py_ssize_t  t , Py_ssize_t Dg = 2):
 		RIJy =  RIJy - 2*box[3]*ROUND(RIJy/(2.0*box[3]))
 		R = SQRT( RIJx**2 +  RIJy**2 + RIJz**2 )
 
-		#coordinate del nodo piu' vicino al centro di massa della coppia e Dx
 		xc = <int>( Dg*(X[pairs[p,0],0] + RIJx/2.0) )
 		yc = <int>( Dg*(X[pairs[p,0],1] + RIJy/2.0) )
 		zc = <int>( Dg*(X[pairs[p,0],2] + RIJz/2.0) )
@@ -384,19 +346,15 @@ def CGSTRESS(Py_ssize_t  t , Py_ssize_t Dg = 2):
 		Dz = <int>( ABS(RIJz)*Dg/2.0 +Rc*Dg +1 )
 
 
-		#calcolo forze
 		if (  ( <int>(ABS(FLOOR(<double>pairs[p,0] /3.0) - FLOOR(<double>pairs[p,1] /3.0) )) == 0 )  &  ( <int>(ABS(pairs[p,0] - pairs[p,1]) ) == 1 )  ):
-			#print('BOND',pairs[i,0],pairs[i,1])
 			FIJx =  Km*(R - l0)*RIJx/R
 			FIJy =  Km*(R - l0)*RIJy/R
 			FIJz =  Km*(R - l0)*RIJz/R
 		else:
-			#print('LJ',pairs[i,0],pairs[i,1])
 			FIJx =  4.0*epsilon*(-12.0*(sigma**12/R**13) + 6.0*(sigma**6/R**7) )*RIJx/R
 			FIJy =  4.0*epsilon*(-12.0*(sigma**12/R**13) + 6.0*(sigma**6/R**7) )*RIJy/R
 			FIJz =  4.0*epsilon*(-12.0*(sigma**12/R**13) + 6.0*(sigma**6/R**7) )*RIJz/R
 
-		#3x forLoop sulla griglia intorno la coppia
 		for i in range(xc-Dx, xc+Dx+1):
 			if i>= Nx :
 				II = i - Nx 
@@ -435,7 +393,6 @@ def CGSTRESS(Py_ssize_t  t , Py_ssize_t Dg = 2):
 						xi = uv/R
 
 						if H < Rc :
-							#calcolo estremi dell'integrale phi
 							if ( (v2<=Rc**2) & (w2<=Rc**2) ) :
 								a = xi
 								b = xj
@@ -465,13 +422,12 @@ def CGSTRESS(Py_ssize_t  t , Py_ssize_t Dg = 2):
 						
 
 
-	#CALCOLO INTERAZIONE MURO ###################################################################################################################
+	#wall interaction
 	cdef double rrwx,rrwy,rrwz, zi,zw ,Fw, Rw,Ri
 	cdef Py_ssize_t n
 
 	for n in range(N):
 		if (X[n,2] <= rcut) :
-			#coordinate i rimappate sulla griglia NxNyNz
 			xc = <int>( Dg*X[n,0] )
 			yc = <int>( Dg*X[n,1] )
 			zc = <int>( Dg*X[n,2] )
@@ -480,7 +436,6 @@ def CGSTRESS(Py_ssize_t  t , Py_ssize_t Dg = 2):
 			Dy = <int>(Rc*Dg +1 )
 			Dz = <int>(Rc*Dg +1 )
 
-			#forza del muro diretta lungo z
 			Fw = epsilon * ( -6*sigma**9/(5*X[n,2]**10) + 3*sigma**3/X[n,2]**4 )
 
 			for i in range(xc-Dx, xc+Dx+1):
@@ -519,7 +474,6 @@ def CGSTRESS(Py_ssize_t  t , Py_ssize_t Dg = 2):
 							zw = rrwz
 
 							if H < Rc :
-								#calcolo estremi dell'integrale phi
 								if ( (Ri<=Rc) & (Rw<=Rc) ) :
 									a = zi
 									b = zw
@@ -550,19 +504,14 @@ def CGSTRESS(Py_ssize_t  t , Py_ssize_t Dg = 2):
 
 
 
-#*********************************************************************************************************************************************************************************************
-#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#*********************************************************************************************************************************************************************************************
-#CALCOLO DELLA TOPOGRAFIA #####################################################################################################################################################################################
 @cython.cdivision(True)
 @cython.boundscheck(False)
 def PROFILO(Py_ssize_t t, Py_ssize_t Dg=2):
+	"""compute topografy of the free surface"""
 	cdef double[:,:] X
-
 	cdef double[:] box
 	cdef Py_ssize_t i, j, k, N, Nx, Ny, Nz
 
-	#uso bin circolare raggio 2
 	N,X,box = initialize_bin(f'../lmp_data/Conf_{t:d}.bin')
 	Nx = <int>( FLOOR(box[1]*2*Dg))
 	Ny = <int>( FLOOR(box[3]*2*Dg))
@@ -578,31 +527,16 @@ def PROFILO(Py_ssize_t t, Py_ssize_t Dg=2):
 		for j in range(Ny):
 			PROFILO[i,j] = np.sort( X.base[lista[i*Ny +j],2], kind='mergesort')[-3:].mean()
 
-	#CALCOLO DELLA DENSITA' #########################
-	#in realta' calcolo il numero di pallette dentro una bolla di raggio 4, non divido per il volume della bolla, questo e' fatto a posteriori
-#	tree = KDTree(X,boxsize=[2*box[1],2*box[3],np.Inf] )
-#	cdef Py_ssize_t[:,:,:] DENSITY = np.zeros((Nx,Ny,Nz)).astype(np.int_)
-
-#	for i in range(Nx):
-#		for j in range(Ny):
-#			for k in range(Nz):
-#				if (<double>k/<double>Dg < PROFILO[i,j]) :
-#					DENSITY[i,j,k] = DENSITY[i,j,k] + <int>(tree.count_neighbors(   KDTree(np.array([<double>i/<double>Dg, <double>j/<double>Dg, <double>k/<double>Dg]).reshape(1,3), boxsize=[2*box[1],2*box[3],np.Inf] ), 4 ))
 
 	np.save(f'profilo/profilo_{t:d}.npy' , PROFILO.base, allow_pickle=False,fix_imports=False)
-#	np.save(f'density/density_{t:d}.npy' , DENSITY.base, allow_pickle=False,fix_imports=False)
 
 	return 
 
 
-#*********************************************************************************************************************************************************************************************
-#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#*********************************************************************************************************************************************************************************************
-#MAPPA DI DeltaH(x,eps)  AL VARIARE DELLA COMPRESSIONE #####################################################################################################################################################################################
 @cython.cdivision(True)
 @cython.boundscheck(False)
 def MAPPA_DH(Py_ssize_t t,Py_ssize_t t2, Py_ssize_t Nx):
-	#usare come Nx un valore doppio di  Lx, quella nominale 200,300,700 non quella proprio esatta
+	"""compute the height variation as a function of the strain and the system length """
 	cdef double[:,:] X, X2, DHxy
 	cdef double[:] box, box2, DH
 	cdef Py_ssize_t i, j, N, Ny, Nz
@@ -636,14 +570,13 @@ def MAPPA_DH(Py_ssize_t t,Py_ssize_t t2, Py_ssize_t Nx):
 			DH[i] = DH[i] + DHxy[i,j]/Ny
 	return t2, DH.base
 
-#*********************************************************************************************************************************************************************************************
-#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#*********************************************************************************************************************************************************************************************
-#CALCOLO DEL VOLUME ##################################################################
+
+
 @cython.boundscheck(False) 
 @cython.wraparound(False)  
 @cython.cdivision(True)
 def VOLUME(Py_ssize_t t):
+	"""compute the real volume"""
 	cdef double Lx,Ly,dx,dy,m, Vol
 	cdef double[:] box, H
 	cdef double[:,:] X,Profilo
@@ -653,8 +586,6 @@ def VOLUME(Py_ssize_t t):
 
 	Lx = 2*box[1]
 	Ly = 2*box[3]
-
-	#CREAZIONE PROFILO**********************************
 
 	Nx = <int>( FLOOR(Lx) )
 	Ny = <int>( FLOOR(Ly) )
@@ -670,17 +601,10 @@ def VOLUME(Py_ssize_t t):
 			if (X[i,2]>m):
 				Profilo[a,b] = X[i,2]
 
-	Vol = 0   #volume
+	Vol = 0  
 	for i in range(Nx):
 		for j in range(Ny):
 			Vol = Vol + Profilo[i,j]*dx*dy
 
 
 	return t, Vol
-
-
-
-#*********************************************************************************************************************************************************************************************
-#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#*********************************************************************************************************************************************************************************************
-
