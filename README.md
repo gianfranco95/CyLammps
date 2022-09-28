@@ -1,7 +1,7 @@
 # Introduction
-CyLammps is a python library used to analyze molecular dynamics simulations. 
-
 ![Library](Cylammps_icon.png)
+
+CyLammps is a python library used to analyze molecular dynamics simulations. 
 Simulations are produced by [LAMMPS](https://docs.lammps.org/Manual.html).
 All the quantity calculated are really important to study the mechanical properties of amorphous materials.
 Among the others there is the [coarse-grained stress](https://link.springer.com/article/10.1140/epje/i2002-10073-5)
